@@ -1,0 +1,174 @@
+## Multiple Linear Regression of COVID expression in rRNA scrubbed data
+## CATEGORICAL analysis of viral load
+## use Limma: dataformat-genes on the rows and samples on columns
+## RMeller 09-Dec-2020
+
+rm(list=ls());gc()
+# load packages
+
+library(limma)
+library(edgeR)
+library(lattice)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(Glimma)
+library(ggfortify)
+library(broom) 
+library(fgsea)
+library(heatmap3)
+library(tsne)
+library(VennDiagram)
+library(EnhancedVolcano)
+setwd("path/to/COVID/COV-IRT_Human_LIMMA"); getwd()
+dir.create("PLOTS-CAT"); dir.create("RESULTS-CAT")
+
+
+
+#############################################################################
+################# 1. Load data and check a few factors ######################
+#############################################################################
+# Skip if you have already ran Section One
+
+# Data files should be in this container
+DATA="path/to/COVID/NASA_DATA/DATA_Ribo_Cleaned_NASA Human_Reads"
+# Read in the COVID gene expression data set 
+Data <- read.csv(file.path(DATA,"STAR_Unnormalized_Counts_rRNA_removed.csv"), header = TRUE, check.names = FALSE)
+str(Data); dim(Data)
+
+# Make the first column rownames and transpose the table.
+# This makes the genes on the columns and IDs on the rows. 
+Data0 <- data.frame(t(Data[,-1]))
+colnames (Data0) <- Data[,1]
+rownames(Data0) <- str_remove(rownames(Data0), "_all-reads")
+dim(Data0); Data0[1:20,1:20]; str(Data0)
+# now add the rownames to a column called ID
+Data0$ID <- rownames(Data0)
+dim(Data0)
+## 845 x 60696
+
+## If one needs to remove rRNA reads
+# rRNA <- unique(read.table(file.path(DATA,"rRNA_geneIDs.txt"), sep ="\t", check.names = FALSE))
+# then match ENSG IDs ... using "-match"
+# geneIDs <- colnames(Data0)
+# datarows = match(rRNA[,1],geneIDs)
+# clean_Data <- Data0[,-datarows]
+# dim(clean_Data)
+
+## Load clinical trait data
+# (Original data had 2 ct >40 as High and 2 as low.  changed to none)
+traitData = read.csv(file.path(DATA,"MASON_Metadata_Combined_v2.txt"), sep ="\t", header = TRUE);
+dim(traitData); head(traitData)
+# 732 samples x 31
+
+## Show how many are in the total data frame
+count(traitData, PCR_SEQ) 
+
+# make the names shorter for nicer graphs
+colnames(traitData)[1] <- ("ID")
+colnames(traitData)[24] <- ("H.Sapiens_Kraken_Reads")
+colnames(traitData)[25] <- ("SARS_CoV2_Kraken_Reads")
+colnames(traitData)[28] <- ("H.Sapiens_Reads")
+colnames(traitData)[27] <- ("SARS_CoV2_Reads")
+rownames(traitData) <- traitData[,1]
+
+# Now match the Samples and expression Data
+Combined_data0 <- inner_join(traitData,Data0, by = "ID")
+dim(Combined_data0)
+# (732 Samples x 60726) added col, but removed one for join
+
+# Now remove data that are duplicates
+Combined_data <- Combined_data0[ Combined_data0$DeDupList != "FALSE", , drop=FALSE]
+dim(Combined_data)
+# 670 samples x 60726
+
+## count again
+count(Combined_data, PCR_SEQ) 
+
+# Save it just in case
+write.table(Combined_data, file = "RESULTS-CAT/Combined_data.txt", sep = "\t")
+
+#################### SUMMARY OF DATA TABLE ####################
+#
+# Combined_data[,1:31] are Metadata
+# Combined_data[,32:60714] are Human genes
+# Combined_data[,60715:60726] are Covid genes 
+#
+###############################################################
+
+# How many transcriptome aligned reads/ sample?
+plotdata <- sort(as.numeric(rowSums(Combined_data[,32:60714]))*1e-6)
+tiff(file="PLOTS-CAT/Counts_barplot.tiff", unit= "in", res = 300, width = 6, height = 5)
+barplot(plotdata, ylim=c(0,50), xaxt = "n", xlab= "Samples", ylab = "Million counts", main="Distribution of Sample Reads")
+abline(h = 2, col = "red"); dev.off()
+
+plotdata2 <- sort(as.numeric(Combined_data$"H.Sapiens_Reads")*1e-6)
+tiff(file="PLOTS-CAT/Counts_AlignedtoGenome_barplot.tiff", unit= "in", res = 300, width = 6, height = 5)
+barplot(plotdata2, ylim=c(0,500), xaxt = "n", xlab= "Samples", ylab = "Million counts", main="Distribution of Sample Reads")
+abline(h = 2, col = "red"); dev.off()
+
+tiff(file="PLOTS-CAT/Counts_AlignedtoGenome_vs_TranscriptomeCounts.tiff", unit= "in", res = 300, width = 6, height = 5)
+plot (log10(Combined_data$"H.Sapiens_Reads"), log10(rowSums(Combined_data[,32:60714])), pch=20)
+abline(h = 5, col = "red"); dev.off()
+
+# a few statistsics
+cor.test(Combined_data$"H.Sapiens_Reads", rowSums(Combined_data[,33:60715]), method="pearson")
+cor.test(Combined_data$"H.Sapiens_Reads", rowSums(Combined_data[,33:60715]), method="spearman")
+
+## test with PCA as well, this works best on normalized data such as cpm data
+# raw DATA
+data0_PCA <- Data0[match(Combined_data$ID,rownames(Data0)),]
+data0_PCA$ID <- NULL
+data0_PCA <- sapply(data0_PCA[,], as.numeric)
+Counts_as_cpm_Data0 <- cpm(t(data0_PCA), lib.size= Combined_data$H.Sapiens_Reads, log=TRUE, prior.count=0.25)
+PCA1<- prcomp(t(Counts_as_cpm_Data0))
+tiff(file="PLOTS-CAT/Counts_PCA.tiff", unit= "in", res = 300, width = 5, height = 5)
+autoplot(PCA1, data= Combined_data, colour = 'Class'); dev.off()
+
+## Clean data to remove samples with low numbers of Transcriptome_reads
+A <- rowSums(Combined_data[,33:60715])
+keep <- A > 2000000
+Data_2Mill <- Combined_data[keep,]
+dim(Data_2Mill)
+# 564 samples x 60726
+## count again
+count(Data_2Mill, PCR_SEQ) 
+
+cpm_Data_2Mill <- cpm(t(Data_2Mill[,33:60714]), lib.size= Data_2Mill$H.Sapiens_Reads, log=TRUE, prior.count=0.25)
+PCA3<- prcomp(t(cpm_Data_2Mill))
+tiff(file="PLOTS-CAT/Counts_PCA_clean_2Mill.tiff", unit= "in", res = 300, width = 5, height = 5)
+autoplot(PCA3,  colour = 'red'); dev.off()
+
+## Save Datsheet for analysis
+write.table(Data_2Mill, file = "RESULTS-CAT/Clean_Com_Data.txt", sep = "\t")
+
+## how do alignments determine number of counted genes???
+Data1 <- data.frame(t(Data_2Mill[,32:60714]))
+colnames(Data1)<- Data_2Mill$ID
+gene_counts <- apply(Data1, 2, function (x) sum(x>10))
+
+tiff(file="PLOTS-CAT/Genescounted_vs_TranscriptomeCounts.tiff", unit= "in", res = 300, width = 6, height = 5)
+plot (log10(rowSums(Data_2Mill[,33:60715])), (gene_counts), pch=20)
+dev.off()
+tiff(file="PLOTS-CAT/Genescounted_vs_GenomeCounts.tiff", unit= "in", res = 300, width = 6, height = 5)
+plot (log10(Data_2Mill$"H.Sapiens_Reads"),(gene_counts), pch=20, col ="red")
+dev.off()
+
+## Save data files in RESULTS-CAT folder
+
+# Save the Trait information
+write.table(Data_2Mill[,1:31], "RESULTS-CAT/traitdata-LIMMA.txt", sep = "\t")
+
+# Create the counts matrix 
+#  For LIMMA data needs adapting so that genes are on the rows and sample on columns
+# remove SARS data to new file (last 12 genes with names ENSSAS...
+Data2 <- data.frame(t(Data_2Mill[,32:60714]))
+colnames(Data2) <- Data_2Mill$ID
+SARS <- data.frame(t(Data_2Mill[,60715:60726]))
+colnames(SARS) <- Data_2Mill$ID
+dim(Data2); write.table(as.matrix(Data2), "RESULTS-CAT/Counts-LIMMA.txt", sep = "\t")
+dim(SARS); write.table(as.matrix(SARS), "RESULTS-CAT/Counts-LIMMA_SARS.txt", sep = "\t")
+
+# now clean up
+rm(list=ls()); gc()
