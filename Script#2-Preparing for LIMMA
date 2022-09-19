@@ -1,0 +1,285 @@
+###################################################################################
+## 2. Now lets start to Limma   ###################################################
+###################################################################################
+##  This file is run after script#1.  If not set working directory to your project folder.
+
+## 2.1. Limma requires a count table and trait data.
+
+counts <- read.table("RESULTS-CAT/counts-LIMMA.txt", header=TRUE, sep = "\t")
+traitData <- read.table(file = "RESULTS-CAT/traitData-LIMMA.txt", header=TRUE, sep = "\t") 
+
+## 2.2 Now create an annotation file 
+
+DATA="path/to/COVID/NASA_DATA/ANALYSIS_DATA"
+annot0 = read.table(file.path(DATA,"HumanAnnotation.txt"), sep = "\t", header = TRUE)
+head(annot0)
+# split up the annotation chromosome column
+temp <- annot0 %>% separate(Chromosome, c("chr", "pos"), ":")
+annot0 <- temp %>% separate(pos, c("start", "stop"), "-")
+dim(annot0); head (annot0)
+
+# now match to the Gene names in counts
+samples = rownames(counts)
+rowdata <- match(samples, annot0$gene_id)
+annot<- annot0[rowdata,]
+dim(annot); dim (counts)
+
+# save the annotation information
+write.table(annot, file = "RESULTS-CAT/annot-LIMMA.txt", sep = "\t")
+
+## 2.3 Now create the design matrix and save it
+head(traitData)
+#design <- model.matrix(~ 0 + Pred_sex + SequencingBatch + PCR_SEQ, data = traitData)
+design <- model.matrix(~ 0 + SequencingBatch + PCR_SEQ, data = traitData)
+write.table(design, file = "RESULTS-CAT/design-LIMMA.txt", sep = "\t")
+
+## 2.4 Now create a contrasts matrix and save it
+head(design)
+contr.matrix <- makeContrasts(HIGHvsNONE = PCR_SEQHigh_Pos - PCR_SEQNone_Neg, 
+	HIGHvsNONE_Pos = PCR_SEQHigh_Pos - PCR_SEQNone_Pos,
+	MEDvsNONE = PCR_SEQMed_Pos - PCR_SEQNone_Neg, 
+	LOWvsNONE = PCR_SEQLow_Pos - PCR_SEQNone_Neg,
+	ViralvsNONE = PCR_SEQViral_Neg - PCR_SEQNone_Neg, 
+	'F-NvsNONE' = PCR_SEQNone_Pos - PCR_SEQNone_Neg, 
+	'MEDvsF-N' = PCR_SEQMed_Pos - PCR_SEQNone_Pos, 
+	'LOWvsF-N' = PCR_SEQLow_Pos - PCR_SEQNone_Pos,levels = colnames(design))
+contr.matrix
+write.table(contr.matrix, file = "RESULTS-CAT/contrast-LIMMA.txt", sep = "\t")
+
+## 2.5 Now assemble the DGE object and assess
+dge <- DGEList(counts=counts, gene=annot)
+# filter genes by expression 566 samples, if >10 rum = 5000
+A <- rowSums(dge$counts); isexpr <- A > 5000
+dge <- dge[isexpr, , keep.lib.size = TRUE]
+#apply TMM normalization
+dge <- calcNormFactors(dge)
+
+# create list of expressed genes
+exp_gene_list <- dge$genes$GeneSymbol
+write.table(exp_gene_list, file = "RESULTS-CAT/Exp_Genes_Filt.txt", sep = "\t")
+
+## 2.5.1 analyse date to see if we have any strong covariates....
+#tiff(file="PLOTS-CAT/MDS_10_pairwise.tiff", unit= "in", res = 300, width = 8, height = 5)
+#plotMDS(dge, labels=Load, top=10, cex = 1, col=ifelse(Load=="m","blue","red"), gene.selection="pairwise", prior.count = 3
+#dev.off()
+#tiff(file="PLOTS-CAT/MDS_4_common.tiff", unit= "in", res = 300, width = 8, height = 5)
+#plotMDS(dge, labels=Load, top=2, cex = 1, col=ifelse(Load=="m","blue","red"), gene.selection="pairwise", prior.count = 3)
+#dev.off()
+#So correction for sex is appropriate?  Used to show sex effect now gone.  
+
+## 2.6 Now create our voom model for testing DGE(and get a plot) voon because library size > 3 fold diff
+v <- voom(dge, design, plot = TRUE)
+# then fit to the linear model using the design  
+fit <-lmFit(v, design)
+# fit to contrast matix, to identify contrast variables
+cfit <- contrasts.fit(fit, contrasts=contr.matrix)
+# finally apply Bayesian correction
+efit <- eBayes(cfit)
+tfit <- treat(efit, lfc=(log2(1.2)))
+dt <- decideTests(tfit)
+summary(dt)
+
+# lets print this to a file
+write.table((summary(dt)), file = "RESULTS-CAT/Down_Up_DGE_LIMMA.txt", sep = "\t")
+
+# 2.7  MA plot of results
+tiff(file="PLOTS-CAT/MD_HIGH-vs-Neg.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=1, status=dt[,1], main=colnames(efit)[1],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_HIGH-vs-NONE_Pos.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=2, status=dt[,2], main=colnames(efit)[2],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_MED-vs-Neg.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=3, status=dt[,3], main=colnames(efit)[3],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_LOW-vs-Neg.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=4, status=dt[,4], main=colnames(efit)[4],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_Virus-vs-Neg.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=5, status=dt[,5], main=colnames(efit)[5],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_NONE_Pos-vs-Neg.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=6, status=dt[,6], main=colnames(efit)[6],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_Med-vs-NONE_Pos.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=7, status=dt[,7], main=colnames(efit)[7],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+tiff(file="PLOTS-CAT/MD_Low-vs-NONE_Pos.tiff", unit= "in", res = 300, width = 8, height = 5)
+plotMD(efit, column=8, status=dt[,8], main=colnames(efit)[8],legend="bottomright")
+abline(h=0,col="darkgrey"); dev.off()
+
+
+# 2.5 Now compare between conditions (pairwise)
+contr.matrix
+de.common1 <- which(dt[,1]!=0 & dt[,2]!=0)
+head(efit$genes$GeneSymbol[de.common1])
+#compare viral vs High covid
+de.common2 <- which(dt[,1]!=0 & dt[,3]!=0)
+head(efit$genes$GeneSymbol[de.common2])
+#high pos or none pos vs none_neg
+de.common3 <- which(dt[,1]!=0 & dt[,4]!=0)
+head(efit$genes$GeneSymbol[de.common3])
+
+# Lists are boring, so lets look at the data in a VennDiagram
+tiff(file="PLOTS-CAT/VennGenes_HIGHvsNeg_&_Pos.tiff", unit= "in", res = 300, width = 3, height = 3)
+vennDiagram(dt[,1:2], circle.col=c("blue", "salmon"), mar=rep(1,4), names=c("High vs Neg", "High vs Pos"), cex=c(1.0, .5, 0.25), main="COVID(High)vs NONE")
+dev.off()
+
+tiff(file="PLOTS-CAT/VennGenes_COVID-high-med-low.tiff", unit= "in", res = 300, width = 4.5, height = 4)
+vennDiagram(dt[,c(1,3,4)], circle.col=c("red", "green", "blue"), names=c("High", "Med", "Low"), cex=c(1.0, .25, 0.25), main="COVID Viral Load")
+dev.off()
+
+tiff(file="PLOTS-CAT/VennGenes_COVID-high-med-low_NF.tiff", unit= "in", res = 400, width = 5.5, height = 4)
+vennDiagram(dt[,c(1,3,4,6)], circle.col=c("red", "green", "blue", "yellow"), 
+names=c("High", "Med", "Low", "N-F"), cex=c(1.0, 1.0, 1), main="COVID Viral Load")
+dev.off()
+
+tiff(file="PLOTS-CAT/VennGenes_COVIDvsVIRAL.tiff", unit= "in", res = 300, width = 3, height = 3)
+vennDiagram(dt[,c(1,5)], circle.col=c("blue", "red"), names=c("COVID", "Other Viral"), cex=c(1.0, .5, 0.25), main="COVID vs virus")
+dev.off()
+
+tiff(file="PLOTS-CAT/VennGenes_Seq vs PCR.tiff", unit= "in", res = 300, width = 3, height = 3)
+vennDiagram(dt[,c(1,6)], circle.col=c("blue", "green"),names=c("High", "None-SeqPos"), cex=c(1.0, .5, 0.25), main="Seq vs PCR")
+dev.off()
+tiff(file="PLOTS-CAT/VennGenes_Med vs None_POS.tiff", unit= "in", res = 300, width = 3, height = 3)
+vennDiagram(dt[,c(3,6)], circle.col=c("salmon", "green"),names=c("Med", "None-SeqPos"), cex=c(1.0, .5, 0.25), main="Seq vs PCR")
+dev.off()
+
+tiff(file="PLOTS-CAT/VennGenes_Low vs None_POS.tiff", unit= "in", res = 300, width = 3, height = 3)
+vennDiagram(dt[,c(4,6)], circle.col=c("pink", "green"),names=c("Low", "None-SeqPos"), cex=c(1.0, .5, 0.25), main="Seq vs PCR")
+dev.off()
+
+summary(dt)
+# print table of results (p<0.05)
+Table1 <- topTable(efit, coef = 1, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table1); write.table(Table1, file = "RESULTS-CAT/SIG_Genes_Table1.txt", sep = "\t"); dim(Table1)
+Table2 <- topTable(efit, coef = 2, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table2); write.table(Table2, file = "RESULTS-CAT/SIG_Genes_Table2.txt", sep = "\t"); dim(Table2)
+Table3 <- topTable(efit, coef = 3, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table3); write.table(Table3, file = "RESULTS-CAT/SIG_Genes_Table3.txt", sep = "\t")
+Table4 <- topTable(efit, coef = 4, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table4); write.table(Table4, file = "RESULTS-CAT/SIG_Genes_Table4.txt", sep = "\t")
+Table5 <- topTable(efit, coef = 5, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table5); write.table(Table5, file = "RESULTS-CAT/SIG_Genes_Table5.txt", sep = "\t")
+Table6 <- topTable(efit, coef = 6, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table6); write.table(Table6, file = "RESULTS-CAT/SIG_Genes_Table6.txt", sep = "\t")
+Table7 <- topTable(efit, coef = 7, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table7); write.table(Table7, file = "RESULTS-CAT/SIG_Genes_Table7.txt", sep = "\t")
+Table8 <- topTable(efit, coef = 8, n =Inf, sort = "p", p = 0.050)[,-1]
+head(Table8); write.table(Table8, file = "RESULTS-CAT/SIG_Genes_Table8.txt", sep = "\t")
+
+## print table of results for further analysis with GSEA
+dir.create("RESULTS-CAT/AB")
+Table1A <- topTable(efit, coef = 1, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table1A); write.table(Table1A, file = "RESULTS-CAT/AB/SIG_Genes_Table1.txt", sep = "\t")
+Table2A <- topTable(efit, coef = 2, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table2A); write.table(Table2A, file = "RESULTS-CAT/AB/SIG_Genes_Table2.txt", sep = "\t")
+Table3A <- topTable(efit, coef = 3, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table3A); write.table(Table3A, file = "RESULTS-CAT/AB/SIG_Genes_Table3.txt", sep = "\t")
+Table4A <- topTable(efit, coef = 4, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table4A); write.table(Table4A, file = "RESULTS-CAT/AB/SIG_Genes_Table4.txt", sep = "\t")
+Table5A <- topTable(efit, coef = 5, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table5A); write.table(Table5A, file = "RESULTS-CAT/AB/SIG_Genes_Table5.txt", sep = "\t")
+Table6A <- topTable(efit, coef = 6, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table6A); write.table(Table6A, file = "RESULTS-CAT/AB/SIG_Genes_Table6.txt", sep = "\t")
+Table7A <- topTable(efit, coef = 7, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table7A); write.table(Table7A, file = "RESULTS-CAT/AB/SIG_Genes_Table7.txt", sep = "\t")
+Table8A <- topTable(efit, coef = 8, n =Inf, sort = "p", p = 1.0)[,-1]
+head(Table8A); write.table(Table8A, file = "RESULTS-CAT/AB/SIG_Genes_Table8.txt", sep = "\t")
+
+## 2.6. Volcanoplots..../ \......
+
+# if starting fresh
+#Table1 <- read.table("SIG_Genes_Table1.txt", sep = "\t", header = TRUE)
+# Create dataframe of log2FC and pvalues....
+str(Table1)
+
+res1 <- data.frame((Table1A[,c(7,10)]));
+rownames(res1) <- make.names(Table1A$GeneSymbol, unique=TRUE) 
+colnames(res1)<- c("log2FC","P.Value")
+# now draw the figure.....
+tiff(file="PLOTS-CAT/Volcano-High COVID vs Neg.tiff", unit= "in", res = 300, width = 6, height = 6)
+EnhancedVolcano(res1,lab = rownames(res1),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "HIGH COVID vs Neg"); dev.off()
+
+# and repeat...
+tiff(file="PLOTS-CAT/Volcano-High COVID vs NONE_POS.tiff", unit= "in", res = 300, width = 6, height = 6)
+res2 <- data.frame(Table2A[,c(7,10)]);
+rownames(res2) <- make.names(Table2A$GeneSymbol, unique=TRUE) 
+colnames(res2)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res2,lab = rownames(res2),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "HIGH COVID vs NONE_Pos");dev.off()
+
+tiff(file="PLOTS-CAT/Volcano-Med COVID vs Neg.tiff", unit= "in", res = 300, width = 6, height = 6)
+res3 <- data.frame(Table3A[,c(7,10)]);
+rownames(res3) <- make.names(Table3A$GeneSymbol, unique=TRUE) 
+colnames(res3)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res3,lab = rownames(res3),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "MED COVID vs Neg");dev.off()
+
+tiff(file="PLOTS-CAT/Volcano-Low COVID vs Neg.tiff", unit= "in", res = 300, width = 6, height = 6)
+res4 <- data.frame(Table4A[,c(7,10)]);
+rownames(res4) <- make.names(Table4A$GeneSymbol, unique=TRUE) 
+colnames(res4)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res4,lab = rownames(res4),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "LOW COVID vs Neg");dev.off()
+
+tiff(file="PLOTS-CAT/Volcano-Virus vs Neg.tiff", unit= "in", res = 300, width = 6, height = 6)
+res5 <- data.frame(Table5A[,c(7,10)]);
+rownames(res5) <- make.names(Table5A$GeneSymbol, unique=TRUE) 
+colnames(res5)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res5,lab = rownames(res5),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "Virus vs Neg");dev.off()
+
+tiff(file="PLOTS-CAT/Volcano- NONE_Pos vs Neg.tiff", unit= "in", res = 300, width = 6, height = 6)
+res6 <- data.frame(Table6A[,c(7,10)]);
+rownames(res6) <- make.names(Table6A$GeneSymbol, unique=TRUE) 
+colnames(res6)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res6,lab = rownames(res6),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "NONE_Pos vs Neg");dev.off()
+
+tiff(file="PLOTS-CAT/Volcano-Med-v-NONE_POS.tiff", unit= "in", res = 300, width = 6, height = 5)
+res7 <- data.frame(Table7A[,c(7,10)]);
+rownames(res7) <- make.names(Table7A$GeneSymbol, unique=TRUE) 
+colnames(res7)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res7,lab = rownames(res7),
+    x = 'log2FC',
+    y = 'P.Value',     
+    xlim = c(-5, 8), title = "MED vs NONE_Pos");dev.off()
+
+tiff(file="PLOTS-CAT/Volcano-Low-vs-NONE_POS.tiff", unit= "in", res = 300, width = 6, height = 5)
+res8 <- data.frame(Table8A[,c(7,10)]);
+rownames(res8) <- make.names(Table8A$GeneSymbol, unique=TRUE) 
+colnames(res8)<- c("log2FC","P.Value")
+# now draw the figure.....
+EnhancedVolcano(res8,lab = rownames(res8),
+    x = 'log2FC',
+    y = 'P.Value',
+    xlim = c(-5, 8), title = "LOW vs NONE_Pos");dev.off()
+
+
