@@ -1,0 +1,242 @@
+## ANALYSIS of SARS_COV2 expression in rRNA scrubbed data
+## RMeller 06-Oct-2021; edited 05-MAY-2022
+
+# clean up just in case
+rm(list=ls());gc()
+
+# load packages
+library(limma)
+library(edgeR)
+library(lattice)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(Glimma)
+library(ggfortify)
+library(broom) 
+library(heatmap3)
+library(reshape2)
+library(tsne)
+library(genefilter)
+library(EnhancedVolcano)
+library(matrixStats)
+setwd("path/to/COVID/COV-IRT_Human_LIMMA"); getwd()
+
+#Set up directories 
+dir.create("SARS_RESULTS");RESULTS="path/to/COVID/COV-IRT_Human_LIMMA/SARS_RESULTS"
+dir.create("SARS_RESULTS/SARS_ANALYSIS"); ANALYSIS="path/to/COVID/COV-IRT_Human_LIMMA/SARS_RESULTS/SARS_ANALYSIS"
+dir.create("SARS_RESULTS/SARS_PLOTS"); Plots="path/to/COVID/COV-IRT_Human_LIMMA/SARS_RESULTS/SARS_PLOTS"
+
+
+## From LIMA ANALYSIS
+#############################################################################
+################# 1. Load data and check a few factors ######################
+#############################################################################
+
+
+#################### SUMMARY OF DATA TABLE ####################
+#
+# Combined_data[,1:30] are Metadata
+# Combined_data[,31:60713] are Human genes
+# Combined_data[,60713:60725] are Covid genes 
+#
+###############################################################
+## Use cleaned data which has samples with 2 mill human reads (42 None_Pos samples) 
+DATA="path/to/COVID/COV-IRT_Human_LIMMA/RESULTS-CAT"
+Combined_data <- read.table(file.path(DATA,"/Clean_Com_Data.txt"), header = TRUE, check.names = FALSE)
+
+traitData <- Combined_data[,1:30]
+H.Counts <- Combined_data[,31:60713]
+S.Counts <- Combined_data[,60713:60725]
+dim(traitData); dim(H.Counts); dim(S.Counts)
+
+## 1. Convert SARS count data to RPKM.  Need  to create sars annot file.  
+
+# Annotation created from gtf using...
+# cat "SARS_ANNOTATION.gtf" | awk 'BEGIN{FS="\t"}{split($9,a,";"); if($3~"gene") print a[1]"\t"a[3]"\t"$1":"$4"-"$5"\t"a[5]"\t"$7}' | sed 's/gene_id "//' | sed 's/gene_id "//' | sed 's/gene_biotype "//'| sed 's/gene_name "//' | sed 's/gene_biotype "//' | sed 's/"//g' | sed 's/ //g' | sed '1igene_id\tGeneSymbol\tChromosome\tClass\tStrand' > SARSAnnotation.txt
+
+S.Annot <- read.table("path/to/COVID/NASA_DATA/SARS_CoV2 Annotation/SARSAnnotation.txt", sep = "\t", header = TRUE)
+head(S.Annot)
+# need to split chromosome column using dplyr
+temp <- S.Annot %>% separate(Chromosome, c("chr", "Pos"), sep = ":") 
+S.annot <- temp %>% separate(Pos, c("Start", "Stop"), sep = "-")
+head (S.annot)
+
+## Create new datafarme of samples with SARS data
+SARS_Data <- Combined_data[,c(1:30,60713:60725)]
+
+## To match paper choose samples with PCR_SEQ == None_Pos
+SARS_Data2 <- SARS_Data[SARS_Data$PCR_SEQ == "None_Pos",]
+dim(SARS_Data2)
+
+## Slight mismatch between STAR counts aligning and gtf annotated reads, 594 has 0 reads, so remove 
+A <- rowSums(SARS_Data2[,31:43])
+keep <- A > 0
+SARS.Counts <- SARS_Data2[keep,]
+dim(SARS.Counts)
+
+## Convert to RPKM
+Counts=SARS.Counts[,31:43]
+# Calculate gene size
+len <- as.numeric(S.annot$Stop)-as.numeric(S.annot$Start)
+# Reads/ kilobase of gene...
+x <- (Counts / len)/1000
+# ...and divide by number of reads x 1,000,000
+SARS.rkpm<- t( (x) * 1e6 / rowSums(x) )
+
+dim(SARS.rkpm)
+SARS.rkpm <- data.frame(SARS.rkpm)
+
+# Now add gene names
+SARS.rkpm$gene_id <- as.character(rownames(SARS.rkpm))
+Combined_data0 <- inner_join(SARS.rkpm,S.annot, by = "gene_id")
+rownames(Combined_data0) <- make.names(Combined_data0$GeneSymbol, unique = TRUE)
+head (Combined_data0);dim(Combined_data0)
+dim(Combined_data0)
+str(Combined_data0)
+
+## Prep data from plot
+data <- Combined_data0[,1:41]
+av.exp <- rowMeans(data)
+st.dev <- rowSds(as.matrix(data))
+barplot(av.exp)
+
+# Plot
+ggplot(data) +
+    geom_bar( aes(x=rownames(data), y=av.exp), stat="identity", 
+		fill="skyblue", alpha=0.7) +
+    geom_errorbar(aes(x=rownames(data), ymin=(av.exp-st.dev), ymax=(av.exp+st.dev)),
+                  width=.5,size=0.5)
+ggsave(file.path(Plots,"MS_SARS_GeneReads-RKPM-bar.tiff"), width=14, height=4)
+
+## Create a dotplot
+## Dot plots are easier in Graphpad, have to melt the data!!
+data2 <- (data)
+data2$GeneSymbol <- rownames(data2)
+boxplot(data)
+dot.data <- melt(data2, id="GeneSymbol")
+names (dot.data)[3] <- ("RKPM")
+
+# Now Plot with ggplot2
+ggplot(dot.data, aes(x=GeneSymbol,y=RKPM, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", show.legend=FALSE)+
+	xlab("SARS-CoV-2 gene")
+ggsave(file.path(Plots,"MS_SARS_GeneReadsRKPM.tiff"), width=8, height=4)
+
+# Now plot log transformed
+ggplot(dot.data, aes(x=GeneSymbol,y=RKPM, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", ,binwidth=0.15, show.legend=FALSE)+
+	scale_y_continuous(trans='log10') +
+	xlab("SARS-CoV-2 gene")
+ggsave(file.path(Plots,"MS_SARS_GeneReadsRKPMlog2.tiff"), width=8, height=4)
+# this omits zero points
+
+## Or add one to the data for log transform
+dot.data2 <- (dot.data)
+dot.data2$RKPM <- (dot.data$RKPM)+1
+ggplot(dot.data2, aes(x=GeneSymbol,y=RKPM, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", ,binwidth=0.15, show.legend=FALSE)+
+	scale_y_continuous(trans='log10') +
+	xlab("SARS-CoV-2 gene")
+ggsave(file.path(Plots,"MS_SARS_GeneReadsRKPMlog2+1.tiff"), width=8, height=4)
+
+#Save data
+write.table(data2, file.path(ANALYSIS,"MS_SARS_Data_RKPM.txt"), sep="\t")
+
+## or as CPM
+head(SARS.Counts)
+SARS.Counts
+rowSums(SARS.Counts[,31:43])
+cpm <- (SARS.Counts[,31:43]/rowSums(SARS.Counts[,31:43])*1e6)
+cpm <- data.frame(t(cpm))
+cpm$gene_id <- as.character(rownames(cpm))
+
+# add gene attributes
+Combined_cpm <- inner_join(cpm,S.annot, by = "gene_id")
+rownames(Combined_cpm) <- make.names(Combined_cpm$GeneSymbol, unique = TRUE)
+head(Combined_cpm);dim(Combined_cpm)
+
+# Now create data
+data.cpm <- Combined_cpm[,1:41]
+av.exp <- rowMeans(data.cpm)
+st.dev <- rowSds(data.cpm)
+barplot(av.exp)
+
+ggplot(data.cpm) +
+    geom_bar( aes(x=rownames(data.cpm), y=av.exp), stat="identity", 
+		fill="skyblue", alpha=0.7) +
+    geom_errorbar( aes(x=rownames(data.cpm), ymin=(av.exp-st.dev), ymax=(av.exp+st.dev), 
+		width=0.5))+
+labs (x = "SARS genes", y= "Gene expression (CPM)")
+ggsave(file.path(Plots,"MS_SARS_Genecpm-bar.tiff"), width=12, height=4)
+
+## Create a dotplot
+##dot plots easier in Grpahpad, have to melt the data!!
+data3 <- (data.cpm)
+data3$GeneSymbol <- rownames(data3)
+dim(data3)
+boxplot(data3[,1:41])
+dot.data <- melt(data3, id="GeneSymbol")
+names (dot.data)[3] <- ("CPM")
+
+# Now Plot with ggplot2
+ggplot(dot.data, aes(x=GeneSymbol,y=CPM, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", show.legend=FALSE)
+ggsave(file.path(Plots,"MS_SARS_GeneCPM.tiff"), width=12, height=4)
+
+ggplot(dot.data, aes(x=GeneSymbol,y=CPM, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", show.legend=FALSE)+
+	scale_y_continuous(trans='log10')
+ggsave(file.path(Plots,"MS_SARS_GeneCPMlog.tiff"), width=12, height=4)
+
+#Save data
+write.table(data3, file.path(ANALYSIS,"MS_SARS_Data_CPM.txt"), sep="\t")
+
+## or as Counts....
+# create data frame
+head(SARS.Counts)
+counts <- data.frame(t(SARS.Counts[,31:43]))
+counts$gene_id <- as.character(rownames(counts))
+
+
+# add gene attributes
+Combined_counts <- inner_join(counts,S.annot, by = "gene_id")
+rownames(Combined_counts) <- make.names(Combined_counts$GeneSymbol, unique = TRUE)
+head(Combined_counts);dim(Combined_counts)
+
+# Now create data
+data.counts <- Combined_counts[,1:41]
+av.exp <- rowMeans(data.counts)
+st.dev <- rowSds(data.counts)
+barplot(av.exp)
+
+ggplot(data.counts) +
+    geom_bar( aes(x=rownames(data.cpm), y=av.exp), stat="identity", 
+		fill="skyblue", alpha=0.7) +
+    geom_errorbar( aes(x=rownames(data.counts), ymin=(av.exp-st.dev), ymax=(av.exp+st.dev), 
+		width=0.5))+
+labs (x = "SARS genes", y= "Read counts")
+ggsave(file.path(Plots,"MS_SARS_Counts-bar.tiff"), width=12, height=4)
+
+## Create a dotplot
+##dot plots easier in Grpahpad, have to melt the data!!
+data4 <- (data.counts)
+data4$GeneSymbol <- rownames(data4)
+dim(data4)
+boxplot(data4[,1:41])
+dot.data3 <- melt(data4, id="GeneSymbol")
+names (dot.data3)[3] <- ("Counts")
+
+# Now Plot with ggplot2
+ggplot(dot.data3, aes(x=GeneSymbol,y=Counts, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", show.legend=FALSE)
+ggsave(file.path(Plots,"MS_SARS_GeneCounts.tiff"), width=12, height=4)
+
+ggplot(dot.data3, aes(x=GeneSymbol,y=Counts, fill =variable))+ 
+	geom_dotplot(stackdir ="center", binaxis="y", show.legend=FALSE)+
+	scale_y_continuous(trans='log10')
+ggsave(file.path(Plots,"MS_SARS_GeneCountslog.tiff"), width=12, height=4)
+
+#Save data
+write.table(data4, file.path(ANALYSIS,"MS_SARS_Data_Counts.txt"), sep="\t")
