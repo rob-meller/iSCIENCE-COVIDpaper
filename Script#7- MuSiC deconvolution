@@ -1,0 +1,268 @@
+###### MuSiC  Deconvolution Script for Bulk RNA seq data ###################
+###### Based on Tutorial https://github.com/xuranw/MuSiC ###################
+##  Script to deconvolve nasal swab data compared to airway data set.
+
+rm(list=ls())
+getwd()
+
+setwd("path/to/COVID/COV-IRT_MuSIC")
+getwd()
+install.packages('Rcpp')
+library('biomaRt')
+library(MuSiC)
+library(bseqsc)
+library(reshape2)
+library(cowplot)
+library(xbioc)
+library(ggfortify)
+library(dplyr)
+library(tidyr)
+library(tsne)
+library(VennDiagram)
+library("ggpubr")
+dir.create("Figures")
+
+## 1a.  get data for analysis (use Human Airway data)
+exp_matrix <- read.table(file.choose(), header = TRUE, row.names =1)
+exp_matrix[1:10,1:10]; dim(exp_matrix)
+
+# now get phenotypic data
+pheno <- read.table(file.choose(), header = TRUE)
+rownames (pheno)=pheno[,1]
+head(pheno); dim(pheno)
+
+# Now create annotated dataframe
+metadata <- data.frame(labelDescription= c(colnames(pheno)), row.names=c(colnames(pheno)))
+anot.pheno<- AnnotatedDataFrame(pheno, metadata)
+
+#Then create the Single Cell expression set
+SC.eset = ExpressionSet(assayData = data.matrix(exp_matrix), phenoData = anot.pheno) 
+
+## 1b. Now import Seq data for deconvolution
+bulk_matrix <- read.table("path/to/COVID/COV-IRT_Human_LIMMA/RESULTS-CAT/Counts-LIMMA.txt", header = TRUE, row.names =1)
+bulk_matrix[1:10,1:10]; dim(bulk_matrix)
+
+# SC data use GENEID/ hgnc_symbol
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+genes <- rownames(bulk_matrix)
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+"hgnc_symbol", "description"),values=genes,mart= mart)
+# okay check the names with dim
+head (G_list); dim(G_list)
+colnames(G_list)[2] <- ("GENEID")
+
+##or 
+##library(EnsDb.Hsapiens.v79)
+##geneIDs1 <- ensembldb::select(EnsDb.Hsapiens.v79, keys= rownames(bulk_matrix), keytype = "GENEID", columns = c("SYMBOL","GENEID"))
+
+# add the gene list to the table, then remove genes not in SCdata
+bulk_matrix$ensembl_gene_id <- rownames(bulk_matrix)
+bulk.matrix <- inner_join(G_list, bulk_matrix, by = "ensembl_gene_id") 
+bulk.matrix[1:10,1:10]; dim(bulk.matrix)
+bulk.matrix$GENEID <- make.names(bulk.matrix$GENEID, unique=TRUE)
+rownames(bulk.matrix) <- bulk.matrix$GENEID
+bulk.matrix1 <- bulk.matrix[,-c(1:3)]
+dim(bulk.matrix1)
+bulk.matrix1[1:10,1:10]
+
+#now match geneIDS from the single cell data to the Bulk data
+samples= rownames(exp_matrix)
+rowdata <- rownames(bulk.matrix1) %in% samples
+bulk.matrix2 <- bulk.matrix1[rowdata,]
+bulk.matrix2[1:10,1:10]; dim(bulk.matrix2)
+
+# Check numbers are okay
+dim(bulk.matrix2)
+dim(exp_matrix)
+# Hmm more in sc data than bulk data!!
+venn.diagram (list(one = samples, two=rownames(bulk.matrix1)), filename = "test.tiff", height = 3000, width = 3000, resolution =
+    300, imagetype = "tiff", units = "px" )
+# The common overlap is the 15582 genes
+
+## load traitdata
+trait_matrix <- read.table("path/to/COVID/COV-IRT_Human_LIMMA/RESULTS-CAT/traitdata-LIMMA.txt", header = TRUE, row.names =1)
+trait_matrix[1:10,1:10]; dim(trait_matrix)
+rownames(trait_matrix) <- trait_matrix$ID
+metadata.bulk <- data.frame(labelDescription= c(colnames(trait_matrix)), row.names=c(colnames(trait_matrix)))
+anot.pheno.bulk<- AnnotatedDataFrame(trait_matrix, metadata.bulk)
+
+## 2. Now create the Expression Set
+bulk.eset = ExpressionSet(assayData = data.matrix(bulk.matrix2), phenoData = anot.pheno.bulk) 
+bulk.eset
+SC.eset
+unique(pheno$Cluster)
+
+## 2a. Estimate cell type proportions
+Est.prop.bulk= music_prop(bulk.eset = bulk.eset, sc.eset = SC.eset, clusters = 'Cluster',
+                               samples = 'Cell', select.ct = c('Secretory3', 'Ciliated1', 'Goblet', 'Ciliated2',
+                                          'Club', 'Secretory2', 'FOXN4', 'Basal1', 'Secretory1',
+                                          'Fibroblast', 'Ionocyte', 'Basal3', 'Basal_Mitotic', 'Basal2'), verbose = T)
+names(Est.prop.bulk)
+
+## Jitter plot of estimated cell type proportions
+#jitter.fig = Jitter_Est(list(data.matrix(Est.prop.bulk$Est.prop.weighted)),
+#                        method.name = c('MuSiC'), title = 'Jitter plot of Est Proportions')
+
+jitter.fig = Jitter_Est(list(data.matrix(Est.prop.bulk$Est.prop.weighted)),
+                       method.name = c(''), show.legend = F, y_max=1, y_lab="Cell proportion", title = 'Jitter plot of Est Proportions')
+tiff(file="Figures/Jitter_cell prop.tiff", unit= "in", res = 300, width = 8, height = 8)
+plot_grid(jitter.fig, labels = 'auto')
+dev.off()
+
+## A more sophisticated jitter plot is provided as below and compares MuSIC and NNLS. 
+# We seperated the subjects by viral status.
+m.prop.bulk = rbind(melt(Est.prop.bulk$Est.prop.weighted), 
+                        melt(Est.prop.bulk$Est.prop.allgene))
+
+colnames(m.prop.bulk) = c('Sub', 'CellType', 'Prop')
+m.prop.bulk$CellType = factor(m.prop.bulk$CellType, levels = c('Secretory3', 'Ciliated1', 'Goblet', 'Ciliated2',
+                                          'Club', 'Secretory2', 'FOXN4', 'Basal1', 'Secretory1',
+                                          'Fibroblast', 'Ionocyte', 'Basal3', 'Basal_Mitotic', 'Basal2'))
+m.prop.bulk$Method = factor(rep(c('MuSiC', 'NNLS'), each = 7896), levels = c('MuSiC', 'NNLS'))
+m.prop.bulk$PCR_SEQ = rep(bulk.eset$PCR_SEQ, 2*14)
+m.prop.bulk$Disease = factor(c('High_Pos', 'Viral_Neg', 'None_Neg', 'None_Pos', 'Low_Pos', 'False_Neg', 'Med_Pos', 'Viral_Pos'))
+m.prop.bulk = rbind(subset(m.prop.bulk, Disease == 'None_Neg'), subset(m.prop.bulk, Disease == 'High_Pos'), 
+				subset(m.prop.bulk, Disease == 'Med_Pos'), subset(m.prop.bulk, Disease == 'Low_Pos'),
+				subset(m.prop.bulk, Disease == 'None_Pos'))
+
+## Now plot...
+jitter.new = ggplot(m.prop.bulk, aes(Method, Prop)) + 
+  geom_point(aes(fill = Method, color = Disease, shape = Disease), 
+             size = 2, alpha = 0.7, position = position_jitter(width=0.25, height=0)) +
+  facet_wrap(~ CellType, scales = 'free') + scale_colour_manual( values = c('green', 'black', 'blue', 'red', "gray20")) +
+  scale_shape_manual(values = c(22, 21, 19, 18, 17))+ theme_minimal()
+
+tiff(file="Figures/Jitter_cell prop_2.tiff", unit= "in", res = 300, width = 8, height = 8)
+jitter.new
+dev.off()
+
+# or all together
+plot_grid(jitter.fig, jitter.new, labels = 'auto')
+
+## Can you split the cells based on the proportions???  
+PCA <- prcomp(Est.prop.bulk$Est.prop.weighted, scale = FALSE)
+summary(PCA)
+autoplot(PCA, color = names(Est.prop.bulk["Est.prop.weighted"]), label = FALSE, loadings = FALSE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 4)
+
+library(cluster)
+Est.prop.bulk["Est.prop.weighted"]
+weight <- data.frame(Est.prop.bulk["Est.prop.weighted"])
+autoplot(pam(weight, 5), frame = TRUE, frame.type = 'norm', loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 3)
+
+### NEED to remove cell types unidentified in data. 
+### NEED to Label the figures by PCR_SEQ
+
+New_est_prop <- data.frame(Est.prop.bulk$Est.prop.weighted)
+
+# just the useful stuff
+New_est_prop <- New_est_prop[, c(2,3,4,7,12)]
+
+## ADD IN PCR_SEQ
+New_est_prop$PCR_SEQ <- trait_matrix$PCR_SEQ
+
+#remove Viral and other non-essentials
+New_est_prop2 <- New_est_prop[New_est_prop$PCR_SEQ != "Viral_Pos" & New_est_prop$PCR_SEQ != "Viral_Neg" & New_est_prop$PCR_SEQ != "False_Neg" ,]
+head(New_est_prop2)
+
+## Create color palette
+cbbPalette <- c("red", "magenta", "orange", "lightblue", "black", "#0072B2", "#D55E00", "#CC79A7")
+## set conditions as new labels and ordered factors to keep labels in same order
+New_est_prop2$PCR_SEQ[New_est_prop2$PCR_SEQ == "High_Pos"] <- "High" 
+New_est_prop2$PCR_SEQ[New_est_prop2$PCR_SEQ == "Med_Pos"] <- "Med" 
+New_est_prop2$PCR_SEQ[New_est_prop2$PCR_SEQ == "Low_Pos"] <- "Low" 
+New_est_prop2$PCR_SEQ[New_est_prop2$PCR_SEQ == "None_Neg"] <- "Neg" 
+New_est_prop2$PCR_SEQ[New_est_prop2$PCR_SEQ == "None_Pos"] <- "F-N" 
+#New_est_prop2$PCR_SEQ <- factor(New_est_prop2$PCR_SEQ, levels = c("High_Pos", "Med_Pos", "Low_Pos", "None_Neg", "None_Pos"))
+
+New_est_prop2$PCR_SEQ <- factor(New_est_prop2$PCR_SEQ, levels = c("High", "Med", "Low",
+	 "Neg", "F-N"))
+
+PCA<- prcomp(New_est_prop2[,1:5], scale = FALSE)
+summary(PCA)
+a<- autoplot(prcomp(New_est_prop2[,1:5], scale = FALSE), data=New_est_prop2, 
+colour ='PCR_SEQ', label = FALSE, size = 1.5, loadings = FALSE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 4)
+
+tiff(file="Figures/PCA_cell prop.tiff", unit= "in", res = 300, width = 5, height = 4.5)
+a + scale_color_manual(values=cbbPalette) 
+dev.off()
+
+## Dec20-2021 AB request for tsne plot.
+set.seed=42
+tsne <- tsne(New_est_prop2[,1:5], initial_config = NULL, k = 5, 
+	initial_dims = 30, perplexity = 40, max_iter = 1000,
+	 min_cost = 0, epoch_callback = NULL, whiten = TRUE,epoch=100)
+cols=factor(New_est_prop2$PCR_SEQ)
+
+# and save
+tiff(file="Figures/tSNE_cell prop.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19);dev.off()
+# Its still similar to the PCA. Do not use in ms.
+# change colours in autoplot
+#https://stackoverflow.com/questions/33640492/change-point-colors-and-color-of-frame-ellipse-around-points
+
+### 2 way ANOVA of proportions to viral conditions.  
+##Save data
+write.table(New_est_prop2, file = "Prop_data.txt", sep = "\t")
+
+##DATA for 2 way ANOVA needs melting
+Melt.Prop.Data <- melt(New_est_prop2, by = PCR_SEQ)
+head(Melt.Prop.Data)
+
+# set order
+Melt.Prop.Data$PCR_SEQ <- factor(Melt.Prop.Data$PCR_SEQ,  levels = c("High", "Med", "Low",
+	 "Neg", "F-N"))
+
+# rename table for figure
+names(Melt.Prop.Data)[2] <- ("Cell_Type")
+names(Melt.Prop.Data)[3] <- ("Proportion")
+
+tiff(file="Figures/Boxplot_by_group_cell prop.tiff", unit= "in", res = 300, width = 8, height = 3)
+ggboxplot(Melt.Prop.Data, x = "PCR_SEQ", y = "Proportion", color = "Cell_Type",
+          palette = c('green', 'black', 'blue', 'red', "gray40"))
+dev.off()
+
+# anova 
+names(Melt.Prop.Data)[2] <- ("Cell_Type")
+my_anova <- aov(Proportion ~ PCR_SEQ * Cell_Type, data = Melt.Prop.Data)
+summary(my_anova)
+str(my_anova)
+capture.output(summary(my_anova), file = "anova_results.txt")
+model.tables(my_anova, type="means", se = TRUE)
+Tukey <-TukeyHSD(my_anova, which = "PCR_SEQ")
+write.table(Tukey$PCR_SEQ, file = "ANOVA_TUKEY_data.txt", sep = "\t")
+## No difference!!
+
+### but its unbalanced, so use Anova from Library cars, its also probably not normal, as its proportion dependent on the other values.  
+library(car)
+res.aov2 <-Anova(lm(Proportion ~ PCR_SEQ * Cell_Type, data = Melt.Prop.Data), type = "III") 
+summary(res.aov2)
+## No difference!!
+
+## Heat map it? 
+library(heatmap3); library("pheatmap")
+heatmap3(New_est_prop2[,1:5])
+
+head(New_est_prop2[,1:5])
+head(New_est_prop2); dim(New_est_prop2)
+pheatmap(New_est_prop2[,1:5], cutree_rows = 8, show_rownames = F)
+# nice needs annotation
+
+pos_df<- data.frame("Load"= New_est_prop2[,6])
+rownames (pos_df) = rownames(New_est_prop2)
+pos_df$Load<-as.character(pos_df$Load)
+head(pos_df); dim(pos_df)
+
+## need color chart
+mycolors <-  list(Load = c("High"="red", "Med"= "magenta", "Low"= "orange", "Neg"="lightblue", "F-N"= "black"))
+mycolors
+names(pos_df)
+
+tiff(file="Figures/Heatmap_cellprop.tiff", unit= "in", res = 300, width = 6.5, height = 3.5)
+pheatmap(New_est_prop2[,1:5], cutree_rows = 2, annotation_row = pos_df, 
+	annotation_colors = mycolors, show_rownames = F, cellwidth=50)
+dev.off()
+
