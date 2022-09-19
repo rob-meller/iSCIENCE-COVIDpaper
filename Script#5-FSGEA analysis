@@ -1,0 +1,282 @@
+#########################################################################################
+#########  5. Gene Set enrichment analysis with FGSEA ###################################
+#########################################################################################
+setwd("path/to/COVID/COV-IRT_Human_LIMMA"); getwd()
+dir.create ("GSEA_Results-CAT")
+
+####GSEA
+## download datasets from "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/7.2/"
+set.seed(123)
+GMT_C1 ="path/to/SEQUENCING/MsigDB/msigdb_v7.2_GMTs/c1.all.v7.2.symbols.gmt"
+GMT_C2 ="path/to/SEQUENCING/MsigDB/msigdb_v7.2_GMTs/c2.all.v7.2.symbols.gmt"
+GMT_C3 ="path/to/SEQUENCING/MsigDB/msigdb_v7.2_GMTs/c3.all.v7.2.symbols.gmt"
+GMT_C5="path/to/SEQUENCING/MsigDB/msigdb_v7.2_GMTs/c5.all.v7.2.symbols.gmt"
+pathways_C1 <-gmtPathways(GMT_C1)
+pathways_C2 <-gmtPathways(GMT_C2)
+pathways_C3 <-gmtPathways(GMT_C3)
+pathways_C5 <-gmtPathways(GMT_C5)
+
+##5.1 High vs None
+Table1 <- read.table("RESULTS-CAT/AB/SIG_Genes_Table1.txt", header=TRUE, sep = "\t"); head(Table1)
+gene_list = Table1$t
+names(gene_list) = Table1$Gene
+gene_list = sort(gene_list, decreasing = TRUE)
+gene_list = gene_list[!duplicated(names(gene_list))]
+head(gene_list)
+gene_list <- gene_list[!is.na(gene_list)]
+
+head(Table1)
+
+## ANALYSIS by Chr location
+fgseaRes_1_C1 <-fgsea(pathways=pathways_C1, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_1_C1 <- fgseaRes_1_C1[order(padj),] 
+sum(fgseaRes_1_C1[, padj < 0.05])
+write.table(as.matrix(fgseaRes_1_C1), file = "GSEA_Results-CAT/GSEA_C1_1_HighvsNone.txt", sep = "\t")
+
+## ANALYSIS by Curated Gene Sets
+fgseaRes_1_C2 <- fgsea(pathways=pathways_C2, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_1_C2 <- fgseaRes_1_C2[order(padj),] 
+sum(fgseaRes_1_C2[, padj < 0.05])
+write.table(as.matrix(fgseaRes_1_C2), file = "GSEA_Results-CAT/GSEA_C2_1_HighvsNone.txt", sep = "\t")
+
+## ANALYSIS by MIR and TFTs
+fgseaRes_1_C3 <-fgsea(pathways=pathways_C3, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_1_C3 <- fgseaRes_1_C3[order(padj),] 
+sum(fgseaRes_1_C3[, padj < 0.05])
+write.table(as.matrix(fgseaRes_1_C3), file = "GSEA_Results-CAT/GSEA_C3_1_HighvsNone.txt", sep = "\t")
+
+## ANALYSIS by Gene Ontology
+fgseaRes_1_C5 <-fgsea(pathways=pathways_C5, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_1_C5 <- fgseaRes_1_C5[order(padj),] 
+sum(fgseaRes_1_C5[, padj < 0.05])
+write.table(as.matrix(fgseaRes_1_C5), file = "GSEA_Results-CAT/GSEA_C5_1_HighvsNone.txt", sep = "\t")
+
+##5.2 Medium vs None
+Table3 <- read.table("RESULTS-CAT/AB/SIG_Genes_Table3.txt", header=TRUE, sep = "\t"); head(Table3)
+gene_list = Table3$t
+names(gene_list) = Table3$Gene
+gene_list = sort(gene_list, decreasing = TRUE)
+gene_list = gene_list[!duplicated(names(gene_list))]
+
+## ANALYSIS by Chr location
+fgseaRes_3_C1 <-fgsea(pathways=pathways_C1, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_3_C1 <- fgseaRes_3_C1[!is.na(fgseaRes_3_C1$padj)]
+fgseaRes_3_C1 <- fgseaRes_3_C1[order(padj),] 
+sum(fgseaRes_3_C1[, padj < 0.05])
+write.table(as.matrix(fgseaRes_3_C1), file = "GSEA_Results-CAT/GSEA_C1_3_MedvsNone.txt", sep = "\t")
+
+## ANALYSIS by Curated Gene Sets
+fgseaRes_3_C2 <-fgsea(pathways=pathways_C2, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_3_C2 <- fgseaRes_3_C2[!is.na(fgseaRes_3_C2$padj)]
+fgseaRes_3_C2 <- fgseaRes_3_C2[order(padj),] 
+sum(fgseaRes_3_C2[, padj < 0.05])
+write.table(as.matrix(fgseaRes_3_C2), file = "GSEA_Results-CAT/GSEA_C2_3_MedvsNone.txt", sep = "\t")
+
+## ANALYSIS by MIR and TFTs
+fgseaRes_3_C3 <-fgsea(pathways=pathways_C3, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_3_C3 <- fgseaRes_3_C3[!is.na(fgseaRes_3_C3$padj)]
+fgseaRes_3_C3 <- fgseaRes_3_C3[order(padj),] 
+sum(fgseaRes_3_C3[, padj < 0.05])
+write.table(as.matrix(fgseaRes_3_C3), file = "GSEA_Results-CAT/GSEA_C3_3_MedvsNone.txt", sep = "\t")
+
+## ANALYSIS by Gene Ontology
+fgseaRes_3_C5 <-fgsea(pathways=pathways_C5, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_3_C5<- fgseaRes_3_C5[!is.na(fgseaRes_3_C5$padj)]
+fgseaRes_3_C5[order(padj),] 
+sum(fgseaRes_3_C5[, padj < 0.05])
+write.table(as.matrix(fgseaRes_3_C5), file = "GSEA_Results-CAT/GSEA_C5_3_MedvsNone.txt", sep = "\t")
+
+##5.3 LOW vs None
+Table4 <- read.table("RESULTS-CAT/AB/SIG_Genes_Table4.txt", header=TRUE, sep = "\t"); head(Table4)
+gene_list = Table4$t
+names(gene_list) = Table4$Gene
+gene_list = sort(gene_list, decreasing = TRUE)
+gene_list = gene_list[!duplicated(names(gene_list))]
+
+## ANALYSIS by Chr location
+fgseaRes_4_C1 <- fgsea(pathways=pathways_C1, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_4_C1 <- fgseaRes_4_C1[!is.na(fgseaRes_4_C1$padj)]
+fgseaRes_4_C1 <- fgseaRes_4_C1[order(padj),] 
+sum(fgseaRes_4_C1[, padj < 0.05])
+write.table(as.matrix(fgseaRes_4_C1), file = "GSEA_Results-CAT/GSEA_C1_4_LowvsNone.txt", sep = "\t")
+
+## ANALYSIS by Curated Gene Sets
+fgseaRes_4_C2 <- fgsea(pathways=pathways_C2, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_4_C2 <- fgseaRes_4_C2[!is.na(fgseaRes_4_C2$padj)]
+fgseaRes_4_C2 <- fgseaRes_4_C2[order(padj),] 
+sum(fgseaRes_4_C2[, padj < 0.05])
+write.table(as.matrix(fgseaRes_4_C2), file = "GSEA_Results-CAT/GSEA_C2_4_LowvsNone.txt", sep = "\t")
+
+## ANALYSIS by MIR and TFTs
+fgseaRes_4_C3 <- fgsea(pathways=pathways_C3, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_4_C3 <- fgseaRes_4_C3[!is.na(fgseaRes_4_C3$padj)]
+fgseaRes_4_C3 <- fgseaRes_4_C3[order(padj),] 
+sum(fgseaRes_4_C3[, padj < 0.05])
+write.table(as.matrix(fgseaRes_4_C3), file = "GSEA_Results-CAT/GSEA_C3_4_LowvsNone.txt", sep = "\t")
+
+## ANALYSIS by Gene Ontology
+fgseaRes_4_C5 <- fgsea(pathways=pathways_C5, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_4_C5 <- fgseaRes_4_C5[!is.na(fgseaRes_4_C5$padj)]
+fgseaRes_4_C5 <- fgseaRes_4_C5[order(padj),] 
+sum(fgseaRes_4_C5[, padj < 0.05])
+write.table(as.matrix(fgseaRes_4_C5), file = "GSEA_Results-CAT/GSEA_C5_4_LowvsNone.txt", sep = "\t")
+
+## 5.4 NONE Neg vs Pos
+Table6 <- read.table("RESULTS-CAT/AB/SIG_Genes_Table6.txt", header=TRUE, sep = "\t"); head(Table6)
+gene_list = Table6$t
+names(gene_list) = Table6$Gene
+gene_list = sort(gene_list, decreasing = TRUE)
+gene_list = gene_list[!duplicated(names(gene_list))]
+
+## ANALYSIS by Chr location
+fgseaRes_6_C1 <-fgsea(pathways=pathways_C1, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_6_C1 <- fgseaRes_6_C1[!is.na(fgseaRes_6_C1$padj)]
+fgseaRes_6_C1 <- fgseaRes_6_C1[order(padj),] 
+sum(fgseaRes_6_C1[, padj < 0.05])
+write.table(as.matrix(fgseaRes_6_C1), file = "GSEA_Results-CAT/GSEA_C1_6_NegvsPos.txt", sep = "\t")
+
+## ANALYSIS by Curated Gene Sets
+fgseaRes_6_C2 <- fgseaMultilevel(pathways=pathways_C2, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_6_C2 <- fgseaRes_6_C2[!is.na(fgseaRes_6_C2$padj)]
+fgseaRes_6_C2 <- fgseaRes_6_C2[order(padj),] 
+sum(fgseaRes_6_C2[, padj < 0.05])
+write.table(as.matrix(fgseaRes_6_C2), file = "GSEA_Results-CAT/GSEA_C2_6_NegvsPos.txt", sep = "\t")
+# fg_Col_6_C2<-collapsePathways (fgseaRes_6_C2, pathways=pathways_C2, stats=gene_list, pval.threshold=0.05, nperm=100000, gseaParam=1)
+
+## ANALYSIS by MIR and TFTs
+fgseaRes_6_C3 <- fgsea(pathways=pathways_C3, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_6_C3 <- fgseaRes_6_C3[!is.na(fgseaRes_6_C3$padj)]
+fgseaRes_6_C3 <- fgseaRes_6_C3[order(padj),] 
+sum(fgseaRes_6_C3[, padj < 0.05])
+write.table(as.matrix(fgseaRes_6_C3), file = "GSEA_Results-CAT/GSEA_C3_6_NegvsPos.txt", sep = "\t")
+
+## ANALYSIS by Gene Ontology
+fgseaRes_6_C5 <- fgsea(pathways=pathways_C5, stats=gene_list, eps = 0, minSize = 15, maxSize = 500, gseaParam=1)
+fgseaRes_6_C5 <- fgseaRes_6_C5[!is.na(fgseaRes_6_C5$padj)]
+fgseaRes_6_C5 <- fgseaRes_6_C5[order(padj),] 
+sum(fgseaRes_6_C5[, padj < 0.05])
+write.table(as.matrix(fgseaRes_6_C5), file = "GSEA_Results-CAT/GSEA_C5_6_NegvsPos.txt", sep = "\t")
+#fix (fgseaRes_1_C5)
+
+## Venn Diag of CHR terms
+# Subset by padj <0.05
+test_1_C1 <- fgseaRes_1_C1[ (fgseaRes_1_C1$padj < 0.05), ] 
+test_3_C1 <- fgseaRes_3_C1[ (fgseaRes_3_C1$padj < 0.05), ] 
+test_4_C1 <- fgseaRes_4_C1[ (fgseaRes_4_C1$padj < 0.05), ] 
+test_6_C1 <- fgseaRes_6_C1[ (fgseaRes_6_C1$padj < 0.05), ] 
+
+## now VennDiag The GO terms
+venn.diagram(list(High = test_1_C1$pathway, Med = test_3_C1$pathway, Low = test_4_C1$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLow-GSEA_chr.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " High vs vs Med vs Low chr", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.pos = c(330, 30, 180), cat.cex = 2.5, fill = c("red", "green", "lightblue"), 
+alpha = 0.5, cex = 3)
+
+## now VennDiag The GO terms_all
+venn.diagram(list(High = test_1_C1$pathway, Med = test_3_C1$pathway, Low = test_4_C1$pathway, Neg = test_6_C1$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLowvsNeg-GSEA_chr.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " High vs Med vs Low vs Neg chr", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.cex = 2.5, fill = c("red", "green", "lightblue", "yellow"), 
+alpha = 0.5, cex = 3)
+
+## Venn Diag of GSEA terms
+# Subset by padj <0.05
+test_1_C5 <- fgseaRes_1_C5[ (fgseaRes_1_C5$padj < 0.05), ] 
+test_3_C5 <- fgseaRes_3_C5[ (fgseaRes_3_C5$padj < 0.05), ] 
+test_4_C5 <- fgseaRes_4_C5[ (fgseaRes_4_C5$padj < 0.05), ] 
+test_6_C5 <- fgseaRes_6_C5[ (fgseaRes_6_C5$padj < 0.05), ] 
+
+## now VennDiag The GO terms
+venn.diagram(list(High = test_1_C5$pathway, Med = test_3_C5$pathway, Low = test_4_C5$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLow-GSEA_GOterms.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " High vs vs Med vs Low GO Terms", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.pos = c(330, 30, 180), cat.cex = 2.5, fill = c("red", "green", "lightblue"), 
+alpha = 0.5, cex = 3)
+
+## now VennDiag The GO terms_all
+venn.diagram(list(High = test_1_C5$pathway, Med = test_3_C5$pathway, Low = test_4_C5$pathway, Neg = test_6_C5$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLow-GSEA_GOterms.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " High vs Med vs Low vs Neg GO Terms", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.cex = 2.5, fill = c("red", "green", "lightblue", "yellow"), 
+alpha = 0.5, cex = 3)
+
+## Now by curated genes
+# Subset by padj <0.05
+test_1_C2 <- fgseaRes_1_C2[ (fgseaRes_1_C2$padj < 0.05), ] 
+test_3_C2 <- fgseaRes_3_C2[ (fgseaRes_3_C2$padj < 0.05), ] 
+test_4_C2 <- fgseaRes_4_C2[ (fgseaRes_4_C2$padj < 0.05), ] 
+test_6_C2 <- fgseaRes_6_C2[ (fgseaRes_6_C2$padj < 0.05), ] 
+
+## now VennDiag The TF terms
+venn.diagram(list(High = test_1_C2$pathway, Med = test_3_C2$pathway, Low = test_4_C2$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLow-GSEA_genelistterms.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " High vs Med vs Low Terms", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.pos = c(330, 30, 180), cat.cex = 2.5, fill = c("red", "green", "lightblue"), 
+alpha = 0.5, cex = 3)
+
+## now VennDiag The GO terms_all
+venn.diagram(list(High = test_1_C2$pathway, Med = test_3_C2$pathway, Low = test_4_C2$pathway, Neg = test_6_C2$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLowvsNeg-GSEA_Listterms.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " List Terms", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.cex = 2.5, fill = c("red", "green", "lightblue", "yellow"), 
+alpha = 0.5, cex = 3)
+
+## Now by TFs/ Mirs
+# Subset by padj <0.05
+test_1_C3 <- fgseaRes_1_C3[ (fgseaRes_1_C3$padj < 0.05), ] 
+test_3_C3 <- fgseaRes_3_C3[ (fgseaRes_3_C3$padj < 0.05), ] 
+test_4_C3 <- fgseaRes_4_C3[ (fgseaRes_4_C3$padj < 0.05), ] 
+test_6_C3 <- fgseaRes_6_C3[ (fgseaRes_6_C3$padj < 0.05), ] 
+
+## now VennDiag The TF terms
+venn.diagram(list(High = test_1_C3$pathway, Med = test_3_C3$pathway, Low = test_4_C3$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLow-GSEA_c3.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " High vs Med vs TF/MIR", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.pos = c(330, 30, 180), cat.cex = 2.5, fill = c("red", "green", "lightblue"), 
+alpha = 0.5, cex = 3)
+
+## now VennDiag TF_MIR_ALL
+venn.diagram(list(High = test_1_C3$pathway, Med = test_3_C3$pathway, Low = test_4_C3$pathway, Neg = test_6_C3$pathway), 
+filename = "PLOTS-CAT/HighvsMedvsLowvsNeg-GSEA_c3.tiff", height = 3000, width = 3000, resolution =300, 
+imagetype = "tiff", units = "px", main = " TF/MIR", 
+main.cex = 3, cat.fontface="bold", scaled = TRUE, label.cex = 3, 
+cat.cex = 2.5, fill = c("red", "green", "lightblue", "yellow"), 
+alpha = 0.5, cex = 3)
+
+## Convert GO terms to lists
+# load the GO library
+library(GO.db)
+
+# extract a named vector of all terms
+goterms <- data.frame(Term(GOTERM))
+goterms$GO_ID <- rownames(goterms)
+
+head(goterms)
+dim(goterms)
+
+# now get pathway terms
+head(test_1_C5)
+
+##each contain a "GO_" or "HP_"lets just cut out the "GO_" using stringr
+# lets first subset using grep to remove all "HP_"
+GO_C5_1 <- subset(test_1_C5$pathway, !grepl("HP_", test_1_C5))
+GO_C5 <- str_remove(GO_C5_1, "GO_")
+## but these are uppercase with spaces replaced by "_"
+GO_C5 <- str_replace_all(GO_C5, "_", " ")
+
+head(GO_C5)
+
+match_1 <- goterms$"Term.GOTERM." %in% tolower(GO_C5)
+GO_numbers_C5_1 <-goterms[match_1, ]; dim(GO_numbers_C1)
+# work with it in R, or export it to a file
+write.table(GO_numbers_C5_1, sep="\t", file="GSEA_Results-CAT/goterms_C5_1.txt")
+
+
+########################################################################################################################
