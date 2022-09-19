@@ -1,0 +1,336 @@
+###########################################################################
+###  3. Cluster analysis of results  ######################################
+###########################################################################
+## Use data file saved at end of section 1, convert to cpm and then filter by DEGs.  
+## Used for supplemental data 2
+
+Combined_data <- read.table(file = "RESULTS-CAT/Clean_Com_Data.txt", sep = "\t", header = TRUE)
+dim(Combined_data); # !! 1-31 are trait data; 32-60714 are count data
+
+# convert counts to CPM and rebuild table
+Counts_as_cpm <- cpm(t(Combined_data[ ,32:60714]), lib.size= Combined_data$H.Sapiens_Reads, log=TRUE, prior.count=0.25)
+gene.data <- t(Combined_data[ ,32:60714])
+B <- rowSums(t(Combined_data[ ,32:60714])); isexpr2 <- B > 5000
+filt.gene.data <- Counts_as_cpm[isexpr2,]
+
+# now combine
+Combined_data_cpm <- (as.data.frame(cbind(Combined_data[ ,1:31], t(filt.gene.data))))
+#write.table(Combined_data_cpm, file = "RESULTS-CAT/Clean_Com_Data_filt_cpm.txt", sep = "\t")
+Combined_data_cpm[1:5,1:40]
+
+# Create Table of top 100 genes from each condition
+high.genes <- Table1[1:100,]
+high.genes$ENSG <- rownames (Table1[1:100,]); rownames(high.genes) <-NULL
+med.genes <- Table3[1:100,]
+med.genes$ENSG <- rownames (Table3[1:100,]); rownames(med.genes) <-NULL
+low.genes <- Table4[1:100,]
+low.genes$ENSG <- rownames (Table4[1:100,]); rownames(low.genes) <-NULL
+neg_pos.genes <- Table6[1:100,]
+neg_pos.genes$ENSG <- rownames (Table6[1:100,]); rownames(neg_pos.genes) <-NULL
+#Top100<- data.frame(cbind(high.genes$ENSG, low.genes$ENSG, med.genes$ENSG, neg_pos.genes$ENSG))
+Top100<- data.frame(cbind(high.genes$ENSG, low.genes$ENSG, med.genes$ENSG))
+Top100<- unlist(Top100); length(Top100)
+
+# Create Table of top 10 genes from each condition
+high.genes <- Table1[1:10,]
+high.genes$ENSG <- rownames (Table1[1:10,]); rownames(high.genes) <-NULL
+med.genes <- Table3[1:10,]
+med.genes$ENSG <- rownames (Table3[1:10,]); rownames(med.genes) <-NULL
+low.genes <- Table4[1:10,]
+low.genes$ENSG <- rownames (Table4[1:10,]); rownames(low.genes) <-NULL
+neg_pos.genes <- Table6[1:10,]
+neg_pos.genes$ENSG <- rownames (Table6[1:10,]); rownames(neg_pos.genes) <-NULL
+#Top10<- data.frame(cbind(high.genes$ENSG, low.genes$ENSG, med.genes$ENSG, neg_pos.genes$ENSG))
+Top10<- data.frame(cbind(high.genes$ENSG, low.genes$ENSG, med.genes$ENSG))
+Top10<- unlist(Top10); length(Top10)
+
+# Create Table of top 5 genes from each condition
+high.genes <- Table1[1:5,]
+high.genes$ENSG <- rownames (Table1[1:5,]); rownames(high.genes) <-NULL
+med.genes <- Table3[1:5,]
+med.genes$ENSG <- rownames (Table3[1:5,]); rownames(med.genes) <-NULL
+low.genes <- Table4[1:5,]
+low.genes$ENSG <- rownames (Table4[1:5,]); rownames(low.genes) <-NULL
+neg_pos.genes <- Table6[1:5,]
+neg_pos.genes$ENSG <- rownames (Table6[1:5,]); rownames(neg_pos.genes) <-NULL
+#Top5<- data.frame(cbind(high.genes$ENSG, low.genes$ENSG, med.genes$ENSG, neg_pos.genes$ENSG))
+Top5<- data.frame(cbind(high.genes$ENSG, low.genes$ENSG, med.genes$ENSG))
+Top5<- unlist(Top5); length(Top5)
+
+
+Combined_data_cpm <- Combined_data_cpm[Combined_data_cpm$PCR_SEQ != "Viral_Pos" & 
+	Combined_data_cpm$PCR_SEQ != "Viral_Neg" & Combined_data_cpm$PCR_SEQ != "False_Neg" ,]
+dim(Combined_data_cpm)
+Combined_data_cpm[1:10,1:40]
+#colnames(Combined_data_cpm)[1] <- ("PCR_SEQ")
+
+
+## set conditions as new names and ordered factors to keep labels in same order
+Combined_data_cpm$PCR_SEQ[Combined_data_cpm$PCR_SEQ == "High_Pos"] <- "High" 
+Combined_data_cpm$PCR_SEQ[Combined_data_cpm$PCR_SEQ == "Med_Pos"] <- "Med" 
+Combined_data_cpm$PCR_SEQ[Combined_data_cpm$PCR_SEQ == "Low_Pos"] <- "Low" 
+Combined_data_cpm$PCR_SEQ[Combined_data_cpm$PCR_SEQ == "None_Neg"] <- "Neg" 
+Combined_data_cpm$PCR_SEQ[Combined_data_cpm$PCR_SEQ == "None_Pos"] <- "F-N" 
+
+Combined_data_cpm$PCR_SEQ <- factor(Combined_data_cpm$PCR_SEQ, levels = c("High", "Med", "Low", "Neg", "F-N"))
+
+
+data100.filt <- data.frame(cbind(Combined_data_cpm[,30], 
+	Combined_data_cpm[ ,match(Top100, colnames(Combined_data_cpm))]))
+colnames(data100.filt)[1] <- ("PCR_SEQ"); head(data100.filt)
+
+data10.filt <- data.frame(cbind(Combined_data_cpm[,30], 
+	Combined_data_cpm[ ,match(Top10, colnames(Combined_data_cpm))]))
+colnames(data10.filt)[1] <- ("PCR_SEQ"); dim(data10.filt)
+
+data5.filt <- data.frame(cbind(Combined_data_cpm[,30], 
+	Combined_data_cpm[ ,match(Top5, colnames(Combined_data_cpm))]))
+colnames(data5.filt)[1] <- ("PCR_SEQ"); dim(data5.filt)
+
+## set conditions as ordered factors to keep labels in same order
+data100.filt$PCR_SEQ <- factor(data100.filt$PCR_SEQ, levels = c("High", "Med", "Low", "Neg", "F-N"))
+data10.filt$PCR_SEQ <- factor(data10.filt$PCR_SEQ, levels = c("High", "Med", "Low", "Neg", "F-N"))
+data5.filt$PCR_SEQ <- factor(data5.filt$PCR_SEQ, levels = c("High", "Med", "Low", "Neg", "F-N"))
+
+head(data100.filt)
+
+## 3.1. SUPERVISED CLUSTERING_PCA
+cbbPalette <- c("red", "magenta", "orange", "lightblue", "black", 
+				"#0072B2", "#D55E00", "#CC79A7")
+
+prcomp_genes <- prcomp(data100.filt[,2:301], scale = FALSE)
+a <- autoplot(prcomp_genes, data=data100.filt, colour="PCR_SEQ") 
+a + scale_color_manual(values=cbbPalette)  
+
+tiff(file="PLOTS-CAT/PCA_100_all.tiff", unit= "in", res = 450, width = 6, height = 5)
+a + scale_color_manual(values=cbbPalette)  
+dev.off()
+
+prcomp_genes <- prcomp(data10.filt[,2:31], scale = FALSE)
+a <- autoplot(prcomp_genes, data=data10.filt, colour="PCR_SEQ") 
+a + scale_color_manual(values=cbbPalette)  
+
+tiff(file="PLOTS-CAT/PCA_10_all.tiff", unit= "in", res = 450, width = 6, height = 5)
+a + scale_color_manual(values=cbbPalette)  
+dev.off()
+
+prcomp_genes <- prcomp(data5.filt[,2:16], scale = FALSE)
+a <- autoplot(prcomp_genes, data=data5.filt, colour="PCR_SEQ") 
+a + scale_color_manual(values=cbbPalette)  
+
+tiff(file="PLOTS-CAT/PCA_5_all.tiff", unit= "in", res = 450, width = 6, height = 5)
+a + scale_color_manual(values=cbbPalette)  
+dev.off()
+
+## 3.2. UNSUPERVISED CLUSTERING TSNE
+# try tsne may need to split the data a bit too many factors
+library(tsne)
+set.seed=42
+tsne <- tsne(data100.filt[,2:301], initial_config = NULL, k = 2, 
+	initial_dims = 30, perplexity = 40, max_iter = 500, min_cost = 0, epoch_callback = NULL, whiten = TRUE,epoch=100)
+cols=factor(data100.filt$PCR_SEQ, levels = c("High", "Med", "Low", "Neg", "F-N"))
+
+# and save
+tiff(file="PLOTS-CAT/TSNE_filt100A.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19)
+dev.off()
+
+tiff(file="PLOTS-CAT/TSNE_filt100.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+#legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19)
+dev.off()
+
+set.seed=42
+tsne <- tsne(data10.filt[,2:31], initial_config = NULL, k = 2, 
+	initial_dims = 30, perplexity = 40, max_iter = 500, min_cost = 0, epoch_callback = NULL, whiten = TRUE,epoch=100)
+cols=factor(data10.filt$PCR_SEQ)
+
+# and save
+tiff(file="PLOTS-CAT/TSNE_filt10A.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19);dev.off()
+tiff(file="PLOTS-CAT/TSNE_filt10.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+#legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19)
+dev.off()
+
+## And for top 5
+set.seed=42
+tsne <- tsne(data10.filt[,2:16], initial_config = NULL, k = 2, 
+	initial_dims = 30, perplexity = 40, max_iter = 500, min_cost = 0, epoch_callback = NULL, whiten = TRUE,epoch=100)
+cols=factor(data10.filt$PCR_SEQ)
+
+# and save
+tiff(file="PLOTS-CAT/TSNE_filt5A.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19);dev.off()
+tiff(file="PLOTS-CAT/TSNE_filt5.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+#legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19);
+dev.off()
+
+## 3.3 Random Forest Test
+library(randomForest)
+require(caTools)
+
+## 3.3.1. Top100
+train<- data100.filt[data100.filt$PCR_SEQ != "None_Pos" ,]
+train$PCR_SEQ <- factor(train$PCR_SEQ, levels = c("High_Pos", "Med_Pos", "Low_Pos", "None_Neg"))
+test<- data100.filt[data100.filt$PCR_SEQ == "None_Pos" ,]
+test$PCR_SEQ <- factor(test$PCR_SEQ, levels = c("None_Pos"))
+dim(train); dim(test)
+
+# Then run the test
+set.seed(42)
+rf <- randomForest(PCR_SEQ ~ .,data=train)
+rf
+
+## Then test
+pred = predict(rf, newdata=test[-1])
+cm = table(test[,1], pred); cm
+
+## Then try neural network
+library(neuralnet)
+
+# call nn model
+set.seed(42)
+nn=neuralnet(PCR_SEQ~.,data=train, hidden=3,act.fct = "logistic",
+                linear.output = FALSE)
+
+## plot network
+plot(nn)
+
+## Test
+Predict=compute(nn,test)
+Predict$net.result
+prob <- Predict$net.result
+pred <- ifelse(prob>0.5, 1, 0)
+pred
+table(pred[,4])
+
+## 3.3.2. Top10
+train<- data10.filt[data10.filt$PCR_SEQ != "N-F" ,]
+train$PCR_SEQ <- factor(train$PCR_SEQ, levels = c("High", "Med", "Low", "Neg"))
+test<- data10.filt[data10.filt$PCR_SEQ == "N-F" ,]
+test$PCR_SEQ <- factor(test$PCR_SEQ, levels = c("N-F"))
+dim(train); dim(test)
+
+# Then run the test
+set.seed(42)
+rf <- randomForest(PCR_SEQ ~ .,data=train)
+rf
+
+## Then test
+pred = predict(rf, newdata=test[-1])
+cm = table(test[,1], pred); cm
+
+## Then try neural network
+# call nn model
+set.seed(42)
+nn=neuralnet(PCR_SEQ~.,data=train, hidden=3,act.fct = "logistic",
+                linear.output = FALSE)
+
+## plot network
+plot(nn)
+
+## Test
+Predict=compute(nn,test)
+Predict$net.result
+prob <- Predict$net.result
+pred <- ifelse(prob>0.5, 1, 0)
+pred
+table(pred[,4])
+
+## 3.3.3. Top5
+train<- data5.filt[data5.filt$PCR_SEQ != "None_Pos" ,]
+train$PCR_SEQ <- factor(train$PCR_SEQ, levels = c("High_Pos", "Med_Pos", "Low_Pos", "None_Neg"))
+test<- data5.filt[data5.filt$PCR_SEQ == "None_Pos" ,]
+test$PCR_SEQ <- factor(test$PCR_SEQ, levels = c("None_Pos"))
+dim(train); dim(test)
+
+# Then run the test
+set.seed(42)
+rf <- randomForest(PCR_SEQ ~ .,data=train)
+rf
+
+## Then test
+pred = predict(rf, newdata=test[-1])
+cm = table(test[,1], pred); cm
+
+
+## Then try neural network
+# call nn model
+set.seed(42)
+nn=neuralnet(PCR_SEQ~.,data=train, hidden=3,act.fct = "logistic",
+                linear.output = FALSE)
+
+## plot network
+plot(nn)
+
+## Test
+Predict=compute(nn,test)
+Predict$net.result
+prob <- Predict$net.result
+pred <- ifelse(prob>0.5, 1, 0)
+pred
+table(pred[,4])
+
+## 8 as low
+
+### The folowing were not used #####
+## 3.3 HIERARCHICAL CLUSTERING
+# create color vector
+map_treatment_to_color <- function(comb_DEGHigh_counts_trait){
+	colorsVector <- ifelse (comb_DEGHigh_counts_trait$PCR_SEQ == "High_Pos", "blue", 
+	ifelse (comb_DEGHigh_counts_trait$PCR_SEQ == "None_Neg", "red", "yellow"))
+	return(colorsVector)
+	}
+sample_colors = map_treatment_to_color(comb_DEGHigh_counts_trait)
+
+tiff(file="PLOTS-CAT/HC_HighvsNeg.tiff", unit= "in", res = 300, width = 5, height = 5)
+heatmap3(t(scale(comb_DEGHigh_counts_trait[ ,32:325])), ColSideColors=sample_colors)
+dev.off()
+
+## Now repeat for LOW
+names(res_table)
+LowDEG<-rownames(res_table[res_table[,4] != 0,, drop=FALSE])
+
+low_counts <- match(LowDEG, colnames(Combined_data_cpm))
+CountsB <- Combined_data_cpm[ ,low_counts]
+dim(CountsB)
+Counts2B <- sapply(CountsB[,1:57],as.numeric)
+Comb_DEGLOW_counts_trait <- cbind(Combined_data_cpm[ ,1:31], Counts2B)
+dim(Comb_DEGLOW_counts_trait)
+
+##now filter off high, low and none
+Comb_DEGLOW_counts_trait <- Comb_DEGLOW_counts_trait[ Comb_DEGLOW_counts_trait$PCR_SEQ == "Low_Pos"|Comb_DEGLOW_counts_trait$PCR_SEQ == "None_Neg"|Comb_DEGLOW_counts_trait$PCR_SEQ == "None_Pos", , drop=FALSE]
+dim(Comb_DEGLOW_counts_trait)
+
+## 3.4. SUPERVISED CLUSTERING_PCA  -LOW
+prcomp_genes <- prcomp(Comb_DEGLOW_counts_trait[,32:88], scale = FALSE)
+#autoplot(prcomp_genes, data=Comb_DEGLOW_counts_trait, colour='PCR_SEQ', frame.type = 't') + scale_color_manual(values=c("red", "gray", "blue"))
+tiff(file="PLOTS-CAT/PCA_LowvsNeg.tiff", unit= "in", res = 300, width = 8, height = 5)
+autoplot(prcomp_genes, data=Comb_DEGLOW_counts_trait, colour='PCR_SEQ') + scale_color_manual(values=c("red", "gray", "blue")); dev.off()
+
+## 3.5. UNSUPERVISED CLUSTERING TSNE  -LOW
+library(tsne)
+set.seed=42
+tsne <- tsne(Comb_DEGLOW_counts_trait[,32:88], initial_config = NULL, k = 2, initial_dims = 30, perplexity = 100, max_iter = 500, min_cost = 0, epoch_callback = NULL, whiten = TRUE,epoch=100)
+cols=as.factor((Comb_DEGLOW_counts_trait[, 30]))
+tiff(file="PLOTS-CAT/TSNE_LowvsNeg.tiff", unit= "in", res = 300, width = 5, height = 5)
+plot(tsne[,1], tsne[,2], pch =19, col=cols)
+legend("bottomleft", legend = unique(cols), col=unique(cols), pch=19); dev.off()
+
+## 3.6 HIERARCHICAL CLUSTERING -LOW
+map_treatment_to_color <- function(Comb_DEGLOW_counts_trait){
+	colorsVector <- ifelse (Comb_DEGLOW_counts_trait$PCR_SEQ == "Low_Pos", "blue", 
+	ifelse (Comb_DEGLOW_counts_trait$PCR_SEQ == "None_Neg", "red", "yellow"))
+	return(colorsVector)
+	}
+sample_colors = map_treatment_to_color(comb_DEGHigh_counts_trait)
+
+tiff(file="PLOTS-CAT/HC_LowvsNeg.tiff", unit= "in", res = 300, width = 5, height = 5)
+heatmap3(t(scale(Comb_DEGLOW_counts_trait[ ,32:88])), ColSideColors=sample_colors); dev.off()
+
+
